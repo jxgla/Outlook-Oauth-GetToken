@@ -1,14 +1,87 @@
 {
-    "input_file": "not_oauth2.txt",
-    "output_file": "oauth2.txt",
-    "concurrent": 2,
-    "proxy": {
-        "mode": "single",
-        "type": "http",
-        "host": "127.0.0.1",
-        "single_port": 7890,
-        "port_start": 24000,
-        "port_end": 24005,
-        "max_per_proxy": 20
+  // 输入账号文件（格式：邮箱----密码）
+  "input_file": "not_oauth2.txt",
+
+  // 结果文件：默认写到 Results/oauth2.txt（5 列，含辅助邮箱）
+  "output_file": "Results/oauth2.txt",
+  // 纯净导入文件：4 列 email----password----client_id----refresh_token
+  "accounts_output_file": "Results/accounts.txt",
+
+  // 并发浏览器数
+  "concurrent": 2,
+  // 是否无头运行
+  "headless": false,
+  // 日志目录（故障截图会写到 log/oauth_debug）
+  "log_dir": "log",
+
+  // ===================== 浏览器 =====================
+  "browser": {
+    // 系统 Chrome 路径；留空=自动探测
+    "path": "",
+    // 固定窗口大小 [宽, 高]；null=随机真实分辨率
+    "window_size": null,
+    // 禁用图片省流量
+    "block_images": false
+  },
+
+  // ===================== 代理 =====================
+  "proxy": {
+    // single=固定端口 / multiple=端口池 / pool=代理清单（支持账密socks5 + front_proxy）
+    "mode": "single",
+    "type": "socks5",
+    "host": "127.0.0.1",
+    "single_port": 7897,
+    "port_start": 24000,
+    "port_end": 24005,
+    "max_per_proxy": 20,
+
+    // pool 模式配置
+    "pool_type": "socks5",
+    "pool_file": "proxypool.txt",
+    "front_proxy": ""
+  },
+
+  // ===================== OAuth2 =====================
+  "oauth2": {
+    "client_id": "9e5f94bc-e8a4-4e73-b8be-63364c29d753",
+    "redirect_url": "http://localhost",
+    "tenant": "common",
+    // 授权页使用 full scopes
+    "Scopes": [
+      "offline_access",
+      "https://outlook.office.com/IMAP.AccessAsUser.All",
+      "https://outlook.office.com/POP.AccessAsUser.All",
+      "https://outlook.office.com/SMTP.Send",
+      "https://graph.microsoft.com/Mail.Read",
+      "https://graph.microsoft.com/Mail.Send",
+      "https://graph.microsoft.com/User.Read",
+      "openid",
+      "profile"
+    ],
+    // code 换 refresh_token 时使用哪组 scope：graph / imap
+    "rt_scope": "graph"
+  },
+
+  // ===================== 辅助邮箱绑定/验证 =====================
+  "temp_mail": {
+    // false = 遇到 protect-account 时仍允许走跳过逻辑
+    "enabled": false,
+    // cloudflare / self
+    "provider": "cloudflare",
+    "base_url": "",
+    "admin_password": "",
+    "domain": "",
+    "name_prefix": "",
+    "enable_prefix": false,
+    "timeout": 30,
+    "code_timeout": 120,
+    "poll_interval": 3,
+    "self": {
+      "base_url": "",
+      "api_key": "",
+      "domain_mode": "random",
+      "domain": "",
+      "name_prefix": ""
     }
+  }
 }

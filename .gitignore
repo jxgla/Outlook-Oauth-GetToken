@@ -7,6 +7,7 @@ __pycache__/
 .venv/
 venv/
 env/
+log/
 
 # IDE / OS
 .idea/
@@ -33,6 +34,7 @@ oauth2.txt
 *.token.txt
 *credentials*
 *secret*
+not_oauth100.txt
 
 # 本地配置（可提交 config.example.json）
 config.json
