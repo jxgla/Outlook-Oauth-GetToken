@@ -93,6 +93,8 @@ def build_options(proxy_url=None, headless=False, window_size=None, browser_path
         co.set_browser_path(browser_path)
     # 反检测核心：真实 Chrome + 去掉 --no-sandbox/--disable-gpu 等强自动化信号
     base_args = [
+        '--guest',
+        '--incognito',
         '--disable-blink-features=AutomationControlled',
         '--lang=zh-CN',
         '--accept-lang=zh-CN,zh,en-US,en',

@@ -74,7 +74,7 @@ python get_refresh_token.py
 
 ### 1.4 使用注意
 
-- 工具会弹真实 Chrome 窗口（`headless=false`）  
+- 默认会弹真实 Chrome 窗口（`headless=false`）；如需有头但后台运行，可设置 `browser.background=true` 最小化窗口，详见 [docs/browser.md](docs/browser.md)  
 - **以无 cookie 冷登录为主**，但会处理 direct consent / direct code / proof / protect-account / kmsi 等变体  
 - 若弹出 **保护帐户** 页：
   - `temp_mail.enabled=false` → 仍可尝试跳过
@@ -112,6 +112,7 @@ python get_refresh_token.py
 |------|------|
 | `path` | Chrome 路径；留空=自动探测系统 Chrome |
 | `window_size` | 固定窗口大小 `[宽, 高]`；`null`=随机真实分辨率 |
+| `background` | 有头模式下是否启动后最小化挂后台；`headless=true` 时不生效 |
 | `block_images` | 是否禁用图片请求 |
 
 ### 2.3 `proxy`

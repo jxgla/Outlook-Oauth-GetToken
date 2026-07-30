@@ -53,6 +53,7 @@ def load_config():
     browser_cfg = cfg.get('browser') or {}
     browser_cfg.setdefault('path', '')
     browser_cfg.setdefault('window_size', None)
+    browser_cfg.setdefault('background', False)
     browser_cfg.setdefault('block_images', False)
     cfg['browser'] = browser_cfg
 
@@ -379,6 +380,11 @@ def _launch_browser(ctx, cfg, logger, tag, t0):
         extra_args=extra_args,
     )
     D.prepare_tab(tab, timezone=timezone, locale='zh-CN', loc=loc)
+    if browser_cfg.get('background') and not cfg.get('headless', False):
+        try:
+            D.minimize_window(tab)
+        except Exception:
+            pass
     logger.write(
         f"{tag}[INFO] {time.strftime('%H:%M:%S')} | +{time.time()-t0:.0f}s launch | "
         f"exe=system-chrome tz={timezone or 'UTC'} win={window_size[0]}x{window_size[1]} proxy={proxy_url.split('//')[-1]}"

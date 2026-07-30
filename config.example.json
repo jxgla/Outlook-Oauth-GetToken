@@ -20,6 +20,8 @@
     "path": "",
     // 固定窗口大小 [宽, 高]；null=随机真实分辨率
     "window_size": null,
+    // 有头时是否最小化挂后台
+    "background": false,
     // 禁用图片省流量
     "block_images": false
   },
