@@ -38,6 +38,8 @@ not_oauth100.txt
 
 # 本地配置（可提交 config.example.json）
 config.json
+proxypool.txt
+progress.md
 
 # 其它可能含账号的导出
 Results/
