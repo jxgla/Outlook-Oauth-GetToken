@@ -494,10 +494,10 @@ def _current_auth_entry_state(page):
         return 'consent'
     if _is_account_type_page(page):
         return 'account_type'
-    if _is_protect_account_page(page):
-        return 'protect_account'
     if _is_proof_verify_page(page):
         return 'proof_verify'
+    if _is_protect_account_page(page):
+        return 'protect_account'
     if _is_kmsi_only_page(page):
         return 'kmsi'
     if _is_passkey_login_prompt(page):

@@ -1,7 +1,7 @@
 """微软辅助邮箱相关页面（DrissionPage 版）。
 
 A) 注册后绑定：「让我们来保护你的帐户」
-   #EmailAddress → #iNext → #iOttText → #iNext
+   「添加电子邮件」前置页 → #EmailAddress → #iNext → #iOttText → #iNext
    （与 manage-webui abuse_recovery 一致）
 
 B) OAuth 冷登录验证已绑定邮箱（Fluent 新 UI）
@@ -21,8 +21,17 @@ from controllers.temp_mail import client_from_config, client_from_session
 
 # --- 绑定页 ---
 BACKUP_EMAIL_SELECTOR = "#EmailAddress"
+BACKUP_EMAIL_SELECTORS = (
+    BACKUP_EMAIL_SELECTOR,
+    'input[type="email"]',
+    'input[name="EmailAddress"]',
+    'input[autocomplete="email"]',
+    'input[placeholder*="电子邮件"]',
+    'input[aria-label*="电子邮件"]',
+)
 VERIFY_CODE_SELECTOR = "#iOttText"
 NEXT_SELECTOR = "#iNext"
+ADD_EMAIL_BUTTON_TEXTS = ("添加电子邮件", "Add email", "Add an email", "Add email address")
 
 # --- 冷登录：确认辅助邮箱并发码 ---
 PROOF_EMAIL_INPUT = "#proof-confirmation-email-input"
@@ -49,7 +58,7 @@ def is_protect_account_page(page):
     if "保护你的帐户" in body or "保护您的帐户" in body or "protect your account" in body.lower():
         if D.count(page, "#iShowSkip") > 0 or D.count(page, NEXT_SELECTOR) > 0:
             return True
-        if "备用" in body or "电子邮件" in body:
+        if "备用" in body or "电子邮件" in body or any(text in body for text in ADD_EMAIL_BUTTON_TEXTS):
             return True
     return False
 
@@ -114,14 +123,112 @@ def _click_i_next(page):
                 return True
     if D.click_role_button(page, "下一步", timeout=1):
         return True
+    for text in ADD_EMAIL_BUTTON_TEXTS:
+        if D.click_role_button(page, text, timeout=0):
+            return True
     return False
+
+
+def _click_add_email_prompt(page):
+    """点击新版保护帐户前置页的「添加电子邮件」并进入邮箱表单。"""
+    for text in ADD_EMAIL_BUTTON_TEXTS:
+        if D.click_role_button(page, text, timeout=0):
+            return True
+    # 个别 Fluent 版本按钮文字不在 button 直接文本节点中，退回文本定位。
+    for text in ADD_EMAIL_BUTTON_TEXTS:
+        if D.click_if_visible(page, f"text:{text}", timeout=0):
+            return True
+    return False
+
+
+def _backup_email_input(page, timeout=2):
+    """兼容旧版 #EmailAddress 与新版 Fluent 动态输入框。"""
+    deadline = time.time() + max(0, float(timeout))
+
+    def _usable(el):
+        if not el or not D._displayed(el):
+            return False
+        try:
+            meta = el.run_js(
+                "return {width:this.offsetWidth,height:this.offsetHeight,disabled:!!this.disabled,"
+                "hidden:!!(this.hidden || this.getAttribute('aria-hidden') === 'true')}"
+            ) or {}
+            return (
+                int(meta.get('width') or 0) >= 20
+                and int(meta.get('height') or 0) >= 10
+                and not meta.get('disabled')
+                and not meta.get('hidden')
+            )
+        except Exception:
+            return True
+
+    for selector in BACKUP_EMAIL_SELECTORS:
+        remaining = max(0, deadline - time.time())
+        el = D.q(page, selector, timeout=min(1.5, remaining))
+        if _usable(el):
+            return el
+        if time.time() >= deadline:
+            break
+    # 新版输入框可能没有稳定 id/type，表单页通常只有一个可见 input。
+    for el in D.q_all(page, "input"):
+        if _usable(el):
+            return el
+    return None
+
+
+def _fill_backup_email(page, email_box, address):
+    """写入 Fluent/React 邮箱控件并确认受控 value 已更新。"""
+    try:
+        email_box.click()
+    except Exception:
+        pass
+    try:
+        email_box.input(address, clear=True)
+    except Exception:
+        pass
+    try:
+        email_box.run_js(
+            """function(v){
+                const el = this;
+                const proto = window.HTMLInputElement && window.HTMLInputElement.prototype;
+                const desc = proto && Object.getOwnPropertyDescriptor(proto, 'value');
+                if (desc && desc.set) { desc.set.call(el, v); }
+                else { el.value = v; }
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+            }""",
+            address,
+        )
+    except Exception:
+        pass
+    def _matches():
+        try:
+            value = email_box.run_js("function(){return this.value || '';}")
+            return str(value or '').strip().lower() == str(address).strip().lower()
+        except Exception:
+            return False
+
+    if _matches():
+        return True
+    # React 受控输入有时会立即覆盖脚本 value，回退到真实键盘事件触发状态更新。
+    try:
+        email_box.clear()
+    except Exception:
+        pass
+    try:
+        email_box.click()
+        page.actions.type(address)
+    except Exception:
+        return False
+    page.wait(0.2)
+    return _matches()
 
 
 def _click_send_code(page):
     """点击「发送验证码」data-testid=primaryButton。"""
     if D.click_if_visible(page, '[data-testid="primaryButton"]', timeout=8):
         return True
-    for text in ("发送验证码", "Send code", "Send verification code"):
+    for text in ("发送验证码", "发送电子邮件", "Send code", "Send verification code", "Send email", "Send an email"):
         if D.click_role_button(page, text, timeout=0):
             return True
     return False
@@ -145,11 +252,63 @@ def _fill_proof_email(page, address):
 def _fill_code_entry_digits(page, code):
     """6 格 #codeEntry-0..5 逐位输入；无提交按钮，满 6 位自动验证。"""
     code = "".join(c for c in str(code) if c.isdigit())[:CODE_ENTRY_COUNT]
-    if len(code) < 4:
+    if len(code) != CODE_ENTRY_COUNT:
         return False
 
+    def _boxes():
+        found = []
+        for i in range(CODE_ENTRY_COUNT):
+            box = page.ele(f"#{CODE_ENTRY_PREFIX}{i}", timeout=3)
+            if not box:
+                return None
+            found.append(box)
+        return found
+
+    def _values(boxes):
+        result = []
+        for box in boxes:
+            try:
+                result.append(str(box.run_js("function(){return this.value || '';}") or ""))
+            except Exception:
+                result.append("")
+        return result
+
+    def _settle(boxes, timeout=6):
+        """等待自动提交；页面离开代码页才算提交成功，停留且清空视为失败。"""
+        deadline = time.time() + timeout
+        enter_sent = False
+        while time.time() < deadline:
+            if not is_code_entry_page(page):
+                return True
+            current = _values(boxes)
+            if "".join(current) == code:
+                if not enter_sent:
+                    try:
+                        page.actions.type(Keys.ENTER)
+                    except Exception:
+                        pass
+                    enter_sent = True
+            try:
+                page.wait(0.2)
+            except Exception:
+                time.sleep(0.2)
+        if not is_code_entry_page(page):
+            return True
+        # 页面仍是代码页时不能把“曾经写入过”当作成功，避免空框假成功。
+        return False
+
+    def _clear(boxes):
+        for box in boxes:
+            try:
+                box.clear()
+            except Exception:
+                pass
+
     def _set_digit(box, ch):
-        box.click()
+        try:
+            box.click()
+        except Exception:
+            pass
         try:
             box.clear()
         except Exception:
@@ -158,7 +317,16 @@ def _fill_code_entry_digits(page, code):
             box.input(ch, clear=True)
         except Exception:
             pass
-        # Fluent/React 需 input 事件才会跳格并在满位时自动提交
+        if not is_code_entry_page(page):
+            # 最后一位可能已触发自动提交并卸载输入框。
+            return True
+        try:
+            current = str(box.run_js("function(){return this.value || '';}") or "")
+        except Exception:
+            current = ""
+        if current == ch:
+            return True
+        # React/Fluent 受控输入回退：使用原生 setter + input/change 事件同步状态。
         try:
             box.run_js(
                 """function(v){
@@ -167,40 +335,49 @@ def _fill_code_entry_digits(page, code):
                     const desc = proto && Object.getOwnPropertyDescriptor(proto, 'value');
                     if (desc && desc.set) { desc.set.call(el, v); }
                     else { el.value = v; }
-                    el.dispatchEvent(new Event('input', { bubbles: true }));
-                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                    const event = window.InputEvent
+                        ? new InputEvent('input', {bubbles:true, inputType:'insertText', data:v})
+                        : new Event('input', {bubbles:true});
+                    el.dispatchEvent(event);
+                    el.dispatchEvent(new Event('change', {bubbles:true}));
                 }""",
                 ch,
             )
         except Exception:
-            pass
-
-    first = page.ele(f"#{CODE_ENTRY_PREFIX}0", timeout=8)
-    if first:
-        try:
-            for i, ch in enumerate(code):
-                box = page.ele(f"#{CODE_ENTRY_PREFIX}{i}", timeout=5)
-                if not box:
-                    raise RuntimeError('digit box missing')
-                _set_digit(box, ch)
-                page.wait(0.1)
-            page.wait(1.5)
-            return True
-        except Exception:
-            pass
-    # 兜底：整串输入到首格
-    try:
-        first = page.ele(f"#{CODE_ENTRY_PREFIX}0", timeout=2)
-        if not first:
             return False
-        first.click()
         try:
-            first.clear()
+            return str(box.run_js("function(){return this.value || '';}") or "") == ch
         except Exception:
-            pass
-        page.actions.click(first).type(code)
-        page.wait(1.5)
-        return True
+            return False
+
+    boxes = _boxes()
+    if not boxes:
+        return False
+
+    # 先走真实键盘整串输入；只有六格 DOM 实际匹配才继续等待自动提交。
+    try:
+        _clear(boxes)
+        boxes[0].click()
+        page.actions.type(code)
+        if _settle(boxes):
+            return True
+    except Exception:
+        pass
+
+    # 键盘自动跳格不稳定时，逐框输入并同步 React 状态，再次确认每格值。
+    try:
+        boxes = _boxes()
+        if not boxes:
+            return False
+        _clear(boxes)
+        for box, ch in zip(boxes, code):
+            if not _set_digit(box, ch):
+                return False
+            try:
+                page.wait(0.1)
+            except Exception:
+                time.sleep(0.1)
+        return _settle(boxes)
     except Exception:
         return False
 
@@ -275,15 +452,26 @@ def bind_recovery_email(page, temp_mail_cfg, log=None, code_timeout=120, local_n
         return False, None
 
     session = client.session_dict()
-    _log("recovery", f"临时邮箱已创建 addr={addr}（本任务独立会话，provider={session.get('provider')}）", "OK")
+    mail_state = "复用已有" if getattr(client, "address_reused", False) else "已创建"
+    _log("recovery", f"临时邮箱{mail_state} addr={addr}（本任务独立会话，provider={session.get('provider')}）", "OK")
     after_ts = time.time()
 
     try:
-        email_box = page.ele('css:' + BACKUP_EMAIL_SELECTOR, timeout=10)
+        # 新版先展示说明页，必须点击「添加电子邮件」后才挂载 #EmailAddress。
+        # 旧版可直接进入邮箱表单；新版必须先点击前置页按钮再查找动态输入框。
+        email_box = D.q(page, BACKUP_EMAIL_SELECTOR, timeout=2)
+        if email_box and not D._displayed(email_box):
+            email_box = None
+        if not email_box:
+            if _click_add_email_prompt(page):
+                _log("recovery", "已点击添加电子邮件前置按钮，等待邮箱输入框", "INFO")
+                email_box = _backup_email_input(page, timeout=15)
+            else:
+                email_box = _backup_email_input(page, timeout=2)
         if not email_box:
             raise RuntimeError("备用邮箱框未出现")
-        email_box.click()
-        email_box.input(addr, clear=True)
+        if not _fill_backup_email(page, email_box, addr):
+            raise RuntimeError("备用邮箱框写入失败")
         page.wait(0.3)
         if not _click_i_next(page):
             raise RuntimeError("无法点击下一步提交备用邮箱")
@@ -373,10 +561,12 @@ def verify_bound_email_on_login(page, bound_session, temp_mail_cfg, log=None, co
 
     # --- 发码页 ---
     if is_proof_confirm_page(page):
-        if not _fill_proof_email(page, bound_address):
-            _log("proof_verify", f"无法填写辅助邮箱框 addr={bound_address}", "FAIL")
-            return False
-        _log("proof_verify", f"已填写辅助邮箱 {bound_address}", "INFO")
+        filled = _fill_proof_email(page, bound_address)
+        if filled:
+            _log("proof_verify", f"已填写辅助邮箱 {bound_address}", "INFO")
+        else:
+            # 新版 /proofs/Verify 会预选已绑定邮箱，只显示“向该邮箱发送电子邮件”按钮。
+            _log("proof_verify", "页面已预选辅助邮箱，直接发送验证码", "INFO")
         page.wait(0.3)
         after_ts = time.time()
         if not _click_send_code(page):

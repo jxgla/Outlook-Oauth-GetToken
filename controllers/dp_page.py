@@ -13,6 +13,7 @@
 3. 查询门面：q / q_all / count / vis / click_sel / fill_sel / text_* / role_button …
    统一把 Playwright 风格 CSS 选择器翻译成 DP 定位符。
 """
+import os
 import random
 import time
 from urllib.parse import parse_qs, urlparse
@@ -134,6 +135,13 @@ def build_options(proxy_url=None, headless=False, window_size=None, browser_path
 def build_browser(proxy_url=None, headless=False, window_size=None, browser_path=None,
                   extra_args=None):
     """启动浏览器，返回 (browser, tab)。tab 已完成反检测准备。"""
+    # websocket-client 遵循环境代理；本地 CDP 地址必须直连，否则握手会被 SOCKS 代理卡住。
+    for key in ('NO_PROXY', 'no_proxy'):
+        values = [item.strip() for item in os.environ.get(key, '').split(',') if item.strip()]
+        for host in ('127.0.0.1', 'localhost'):
+            if host not in values:
+                values.append(host)
+        os.environ[key] = ','.join(values)
     co = build_options(proxy_url, headless, window_size, browser_path, extra_args)
     browser = Chromium(co)
     tab = browser.latest_tab
